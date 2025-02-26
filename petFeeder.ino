@@ -2,6 +2,8 @@
 #include "Adafruit_MQTT.h"
 #include "Adafruit_MQTT_Client.h"
 #include <Servo.h>
+#include <NTPClient.h>
+#include <WiFiUdp.h>
 
 #define WIFI_SSID "D03CDialog1-6022"
 #define WIFI_PASS "tharu4567"
@@ -18,8 +20,9 @@ Adafruit_MQTT_Client mqtt(&client, MQTT_SERV, MQTT_PORT, MQTT_NAME, MQTT_PASS);
 // Subscribe to "onoff" feed
 Adafruit_MQTT_Subscribe onoff = Adafruit_MQTT_Subscribe(&mqtt, MQTT_NAME "/f/onoff");
 
-// Publish feed count to Adafruit IO
+// Publish feed count and timestamp to Adafruit IO
 Adafruit_MQTT_Publish feed_count = Adafruit_MQTT_Publish(&mqtt, MQTT_NAME "/f/feed_count");
+Adafruit_MQTT_Publish feed_timestamp = Adafruit_MQTT_Publish(&mqtt, MQTT_NAME "/f/feed_timestamp");
 
 // Servo motor setup
 Servo feederServo;
@@ -27,6 +30,11 @@ Servo feederServo;
 
 // Variable to track feed activations
 int feedCounter = 0;
+
+// NTP Client Setup
+WiFiUDP ntpUDP;
+NTPClient timeClient(ntpUDP, "pool.ntp.org", 19800, 60000); // GMT +5:30 for Sri Lanka (Adjust if needed)
+int lastResetDay = -1;  // Store the last day when the counter was reset
 
 void setup()
 {
@@ -48,12 +56,29 @@ void setup()
   // Initialize servo
   feederServo.attach(SERVO_PIN);
   feederServo.write(0); // Start in closed position
+
+  // Start NTP Client
+  timeClient.begin();
 }
 
 void loop()
 {
   MQTT_connect();
   
+  // Update NTP time
+  timeClient.update();
+  int currentHour = timeClient.getHours();
+  int currentMinute = timeClient.getMinutes();
+  int currentDay = timeClient.getDay();
+
+  // Reset feed count at midnight (00:00)
+  if (currentHour == 0 && currentMinute == 0 && currentDay != lastResetDay) {
+    feedCounter = 0;
+    publishFeedCount();
+    lastResetDay = currentDay;
+    Serial.println("Feed count reset at midnight.");
+  }
+
   // Read from our subscription queue until we run out, or wait up to 5 seconds for an update
   Adafruit_MQTT_Subscribe *subscription;
   while ((subscription = mqtt.readSubscription(5000)))
@@ -74,13 +99,14 @@ void loop()
         // Increment feed counter
         feedCounter++;
 
-        // Publish the new count to Adafruit IO
-        if (!feed_count.publish(feedCounter)) {
-          Serial.println("Failed to publish feed count");
-        } else {
-          Serial.print("Feed Count Published: ");
-          Serial.println(feedCounter);
-        }
+        // Get the current timestamp in a human-readable format
+        String timestamp = timeClient.getFormattedTime();
+        Serial.print("Timestamp: ");
+        Serial.println(timestamp);
+
+        // Publish the new count and timestamp to Adafruit IO
+        publishFeedCount();
+        publishFeedTimestamp(timestamp);
       }
     }
   }
@@ -119,4 +145,24 @@ void MQTT_connect()
        }
   }
   Serial.println("MQTT Connected!");
+}
+
+// Function to publish the feed count
+void publishFeedCount() {
+  if (!feed_count.publish(feedCounter)) {
+    Serial.println("Failed to publish feed count");
+  } else {
+    Serial.print("Feed Count Published: ");
+    Serial.println(feedCounter);
+  }
+}
+
+// Function to publish the feed timestamp
+void publishFeedTimestamp(String timestamp) {
+  if (!feed_timestamp.publish(timestamp.c_str())) {
+    Serial.println("Failed to publish feed timestamp");
+  } else {
+    Serial.print("Feed Timestamp Published: ");
+    Serial.println(timestamp);
+  }
 }
