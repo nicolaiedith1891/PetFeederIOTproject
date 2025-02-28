@@ -20,31 +20,34 @@ Adafruit_MQTT_Client mqtt(&client, MQTT_SERV, MQTT_PORT, MQTT_NAME, MQTT_PASS);
 // Subscribe to "onoff" feed
 Adafruit_MQTT_Subscribe onoff = Adafruit_MQTT_Subscribe(&mqtt, MQTT_NAME "/f/onoff");
 
-// Publish feed count and timestamp to Adafruit IO
+// Publish feeds to Adafruit IO
 Adafruit_MQTT_Publish feed_count = Adafruit_MQTT_Publish(&mqtt, MQTT_NAME "/f/feed_count");
 Adafruit_MQTT_Publish feed_timestamp = Adafruit_MQTT_Publish(&mqtt, MQTT_NAME "/f/feed_timestamp");
+Adafruit_MQTT_Publish food_level = Adafruit_MQTT_Publish(&mqtt, MQTT_NAME "/f/food_level");
 
 // Servo motor setup
 Servo feederServo;
 #define SERVO_PIN D4  // Use the correct GPIO pin
 
-// Variable to track feed activations
+// Ultrasonic Sensor Pins
+#define TRIG_PIN D5
+#define ECHO_PIN D6
+
+// Feed Counter Variables
 int feedCounter = 0;
 
 // NTP Client Setup
 WiFiUDP ntpUDP;
-NTPClient timeClient(ntpUDP, "pool.ntp.org", 19800, 60000); // GMT +5:30 for Sri Lanka (Adjust if needed)
+NTPClient timeClient(ntpUDP, "pool.ntp.org", 19800, 60000); // GMT +5:30 for Sri Lanka
 int lastResetDay = -1;  // Store the last day when the counter was reset
 
-void setup()
-{
+void setup() {
   Serial.begin(9600);
 
   // Connect to WiFi
   Serial.print("\n\nConnecting Wifi... ");
   WiFi.begin(WIFI_SSID, WIFI_PASS);
-  while (WiFi.status() != WL_CONNECTED)
-  {
+  while (WiFi.status() != WL_CONNECTED) {
     delay(500);
     Serial.print(".");
   }
@@ -59,10 +62,13 @@ void setup()
 
   // Start NTP Client
   timeClient.begin();
+
+  // Initialize Ultrasonic Sensor Pins
+  pinMode(TRIG_PIN, OUTPUT);
+  pinMode(ECHO_PIN, INPUT);
 }
 
-void loop()
-{
+void loop() {
   MQTT_connect();
   
   // Update NTP time
@@ -79,19 +85,24 @@ void loop()
     Serial.println("Feed count reset at midnight.");
   }
 
+  // Measure and Publish Food Level
+  int level = getFoodLevel();
+  if (!food_level.publish(level)) {
+    Serial.println("Failed to publish food level");
+  } else {
+    Serial.print("Food Level Published: ");
+    Serial.println(level);
+  }
+
   // Read from our subscription queue until we run out, or wait up to 5 seconds for an update
   Adafruit_MQTT_Subscribe *subscription;
-  while ((subscription = mqtt.readSubscription(5000)))
-  {
-    // If a subscription updated...
-    if (subscription == &onoff)
-    {
+  while ((subscription = mqtt.readSubscription(5000))) {
+    if (subscription == &onoff) {
       Serial.print("onoff: ");
       Serial.println((char*) onoff.lastread);
       
       // Move servo based on the command
-      if (!strcmp((char*) onoff.lastread, "ON"))
-      {
+      if (!strcmp((char*) onoff.lastread, "ON")) {
         feederServo.write(180); // Open feeder completely
         delay(2000); // Keep it open for 2 seconds
         feederServo.write(0); // Close feeder
@@ -99,7 +110,7 @@ void loop()
         // Increment feed counter
         feedCounter++;
 
-        // Get the current timestamp in a human-readable format
+        // Get the current timestamp
         String timestamp = timeClient.getFormattedTime();
         Serial.print("Timestamp: ");
         Serial.println(timestamp);
@@ -112,39 +123,9 @@ void loop()
   }
 
   // Keep MQTT connection alive
-  if (!mqtt.ping())
-  {
+  if (!mqtt.ping()) {
     mqtt.disconnect();
   }
-}
-
-void MQTT_connect() 
-{
-  int8_t ret;
-
-  // Stop if already connected
-  if (mqtt.connected()) 
-  {
-    return;
-  }
-
-  Serial.print("Connecting to MQTT... ");
-
-  uint8_t retries = 3;
-  while ((ret = mqtt.connect()) != 0) // connect() returns 0 when connected
-  { 
-       Serial.println(mqtt.connectErrorString(ret));
-       Serial.println("Retrying MQTT connection in 5 seconds...");
-       mqtt.disconnect();
-       delay(5000);  // wait 5 seconds
-       retries--;
-       if (retries == 0) 
-       {
-         // If failed after retries, enter infinite loop to reset
-         while (1);
-       }
-  }
-  Serial.println("MQTT Connected!");
 }
 
 // Function to publish the feed count
@@ -165,4 +146,38 @@ void publishFeedTimestamp(String timestamp) {
     Serial.print("Feed Timestamp Published: ");
     Serial.println(timestamp);
   }
+}
+
+// Function to measure food level using the ultrasonic sensor
+int getFoodLevel() {
+  digitalWrite(TRIG_PIN, LOW);
+  delayMicroseconds(2);
+  digitalWrite(TRIG_PIN, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(TRIG_PIN, LOW);
+
+  long duration = pulseIn(ECHO_PIN, HIGH);
+  int distance = duration * 0.034 / 2; // Convert to cm
+
+  // Assuming max distance (empty) is 20 cm and min (full) is 5 cm
+  int level = map(distance, 20, 5, 0, 100);
+  level = constrain(level, 0, 100); // Keep within 0-100%
+  return level;
+}
+
+void MQTT_connect() {
+  int8_t ret;
+  if (mqtt.connected()) return;
+
+  Serial.print("Connecting to MQTT... ");
+  uint8_t retries = 3;
+  while ((ret = mqtt.connect()) != 0) {
+    Serial.println(mqtt.connectErrorString(ret));
+    Serial.println("Retrying MQTT connection in 5 seconds...");
+    mqtt.disconnect();
+    delay(5000);
+    retries--;
+    if (retries == 0) while (1);
+  }
+  Serial.println("MQTT Connected!");
 }
