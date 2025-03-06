@@ -5,9 +5,11 @@
 #include <NTPClient.h>
 #include <WiFiUdp.h>
 
+// WiFi Credentials
 #define WIFI_SSID "D03CDialog1-6022"
 #define WIFI_PASS "tharu4567"
 
+// Adafruit IO Credentials
 #define MQTT_SERV "io.adafruit.com"
 #define MQTT_PORT 1883
 #define MQTT_NAME "36IXTY"
@@ -17,67 +19,64 @@
 WiFiClient client;
 Adafruit_MQTT_Client mqtt(&client, MQTT_SERV, MQTT_PORT, MQTT_NAME, MQTT_PASS);
 
-// Subscribe to "onoff" feed
+// MQTT Feeds
 Adafruit_MQTT_Subscribe onoff = Adafruit_MQTT_Subscribe(&mqtt, MQTT_NAME "/f/onoff");
-
-// Publish feeds to Adafruit IO
+Adafruit_MQTT_Subscribe scheduled_feed = Adafruit_MQTT_Subscribe(&mqtt, MQTT_NAME "/f/scheduled_feed");
 Adafruit_MQTT_Publish feed_count = Adafruit_MQTT_Publish(&mqtt, MQTT_NAME "/f/feed_count");
 Adafruit_MQTT_Publish feed_timestamp = Adafruit_MQTT_Publish(&mqtt, MQTT_NAME "/f/feed_timestamp");
 Adafruit_MQTT_Publish food_level = Adafruit_MQTT_Publish(&mqtt, MQTT_NAME "/f/food_level");
 
-// Servo motor setup
+// Servo Motor
 Servo feederServo;
-#define SERVO_PIN D4  // Use the correct GPIO pin
+#define SERVO_PIN D4
 
-// Ultrasonic Sensor Pins
+// Ultrasonic Sensor
 #define TRIG_PIN D5
 #define ECHO_PIN D6
 
-// Feed Counter Variables
+// Pet Feeder Ready LED
+#define LED D2 
+
+// Variables
 int feedCounter = 0;
+bool scheduledFeeding = false;
+unsigned long lastFeedTime = 0;
 
 // NTP Client Setup
 WiFiUDP ntpUDP;
-NTPClient timeClient(ntpUDP, "pool.ntp.org", 19800, 60000); // GMT +5:30 for Sri Lanka
-int lastResetDay = -1;  // Store the last day when the counter was reset
+NTPClient timeClient(ntpUDP, "pool.ntp.org", 19800, 60000); 
+int lastResetDay = -1;
 
 void setup() {
   Serial.begin(9600);
-
-  // Connect to WiFi
-  Serial.print("\n\nConnecting Wifi... ");
   WiFi.begin(WIFI_SSID, WIFI_PASS);
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
     Serial.print(".");
   }
-  Serial.println(" Connected!");
+  Serial.println("Connected to WiFi");
 
-  // Subscribe to MQTT feed
   mqtt.subscribe(&onoff);
+  mqtt.subscribe(&scheduled_feed);
 
-  // Initialize servo
   feederServo.attach(SERVO_PIN);
-  feederServo.write(0); // Start in closed position
+  feederServo.write(0);
 
-  // Start NTP Client
-  timeClient.begin();
-
-  // Initialize Ultrasonic Sensor Pins
   pinMode(TRIG_PIN, OUTPUT);
   pinMode(ECHO_PIN, INPUT);
+  pinMode(LED, OUTPUT);
+  
+  timeClient.begin();
 }
 
 void loop() {
   MQTT_connect();
-  
-  // Update NTP time
   timeClient.update();
   int currentHour = timeClient.getHours();
   int currentMinute = timeClient.getMinutes();
   int currentDay = timeClient.getDay();
-
-  // Reset feed count at midnight (00:00)
+  
+  // Reset Feed Count at Midnight
   if (currentHour == 0 && currentMinute == 0 && currentDay != lastResetDay) {
     feedCounter = 0;
     publishFeedCount();
@@ -85,84 +84,30 @@ void loop() {
     Serial.println("Feed count reset at midnight.");
   }
 
-  // Measure and Publish Food Level
-  int level = getFoodLevel();
-  if (!food_level.publish(level)) {
-    Serial.println("Failed to publish food level");
-  } else {
-    Serial.print("Food Level Published: ");
-    Serial.println(level);
-  }
-
-  // Read from our subscription queue until we run out, or wait up to 5 seconds for an update
+  // Process MQTT messages
   Adafruit_MQTT_Subscribe *subscription;
   while ((subscription = mqtt.readSubscription(5000))) {
     if (subscription == &onoff) {
-      Serial.print("onoff: ");
-      Serial.println((char*) onoff.lastread);
-      
-      // Move servo based on the command
-      if (!strcmp((char*) onoff.lastread, "ON")) {
-        feederServo.write(180); // Open feeder completely
-        delay(2000); // Keep it open for 2 seconds
-        feederServo.write(0); // Close feeder
-
-        // Increment feed counter
-        feedCounter++;
-
-        // Get the current timestamp
-        String timestamp = timeClient.getFormattedTime();
-        Serial.print("Timestamp: ");
-        Serial.println(timestamp);
-
-        // Publish the new count and timestamp to Adafruit IO
-        publishFeedCount();
-        publishFeedTimestamp(timestamp);
-      }
+      handleManualFeeding();
+    }
+    if (subscription == &scheduled_feed) {
+      scheduledFeeding = strcmp((char*)scheduled_feed.lastread, "ON") == 0;
+      Serial.println(scheduledFeeding ? "Scheduled Feeding Enabled" : "Scheduled Feeding Disabled");
     }
   }
+  
+  // Scheduled Feeding Every 6 Hours
+  if (scheduledFeeding && millis() - lastFeedTime >= 21600000) {
+    handleManualFeeding();
+    lastFeedTime = millis();
+  }
 
-  // Keep MQTT connection alive
+  // Publish Food Level
+  publishFoodLevel();
+
   if (!mqtt.ping()) {
     mqtt.disconnect();
   }
-}
-
-// Function to publish the feed count
-void publishFeedCount() {
-  if (!feed_count.publish(feedCounter)) {
-    Serial.println("Failed to publish feed count");
-  } else {
-    Serial.print("Feed Count Published: ");
-    Serial.println(feedCounter);
-  }
-}
-
-// Function to publish the feed timestamp
-void publishFeedTimestamp(String timestamp) {
-  if (!feed_timestamp.publish(timestamp.c_str())) {
-    Serial.println("Failed to publish feed timestamp");
-  } else {
-    Serial.print("Feed Timestamp Published: ");
-    Serial.println(timestamp);
-  }
-}
-
-// Function to measure food level using the ultrasonic sensor
-int getFoodLevel() {
-  digitalWrite(TRIG_PIN, LOW);
-  delayMicroseconds(2);
-  digitalWrite(TRIG_PIN, HIGH);
-  delayMicroseconds(10);
-  digitalWrite(TRIG_PIN, LOW);
-
-  long duration = pulseIn(ECHO_PIN, HIGH);
-  int distance = duration * 0.034 / 2; // Convert to cm
-
-  // Assuming max distance (empty) is 20 cm and min (full) is 5 cm
-  int level = map(distance, 20, 5, 0, 100);
-  level = constrain(level, 0, 100); // Keep within 0-100%
-  return level;
 }
 
 void MQTT_connect() {
@@ -176,8 +121,63 @@ void MQTT_connect() {
     Serial.println("Retrying MQTT connection in 5 seconds...");
     mqtt.disconnect();
     delay(5000);
-    retries--;
-    if (retries == 0) while (1);
+    if (--retries == 0) while (1);
   }
   Serial.println("MQTT Connected!");
+  digitalWrite(LED, HIGH);
 }
+
+void handleManualFeeding() {
+  feederServo.write(180);
+  delay(2000);
+  feederServo.write(0);
+  feedCounter++;
+  publishFeedCount();
+  publishFeedTimestamp();
+}
+
+void publishFeedCount() {
+  if (!feed_count.publish(feedCounter)) {
+    Serial.println("Failed to publish feed count");
+  } else {
+    Serial.print("Feed Count Published: ");
+    Serial.println(feedCounter);
+  }
+}
+
+void publishFeedTimestamp() {
+  String timestamp = timeClient.getFormattedTime();
+  if (!feed_timestamp.publish(timestamp.c_str())) {
+    Serial.println("Failed to publish feed timestamp");
+  } else {
+    Serial.print("Feed Timestamp Published: ");
+    Serial.println(timestamp);
+  }
+}
+
+void publishFoodLevel() {
+  digitalWrite(TRIG_PIN, LOW);
+  delayMicroseconds(2);
+  digitalWrite(TRIG_PIN, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(TRIG_PIN, LOW);
+  
+  long duration = pulseIn(ECHO_PIN, HIGH);
+  int distance = duration * 0.034 / 2; // Convert to cm
+  
+  const int MAX_DEPTH = 6;
+  const int MIN_DEPTH = 1;
+
+  int foodLevel = map(distance, MIN_DEPTH, MAX_DEPTH, 100, 0);
+  
+  foodLevel = constrain(foodLevel, 0, 100);
+
+  if (!food_level.publish(foodLevel)) {
+    Serial.println("Failed to publish food level");
+  } else {
+    Serial.print("Food Level Published: ");
+    Serial.print(foodLevel);
+    Serial.println("%");
+  }
+}
+
