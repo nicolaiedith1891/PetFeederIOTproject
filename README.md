@@ -1,6 +1,4 @@
-![image](https://github.com/user-attachments/assets/b00c8b82-7283-4873-bcb5-51fcd835568a)# 🐾 Smart IoT Pet Feeder
-
-![IoT Pet Feeder](https://your-image-link.com)
+# 🐾 Smart IoT Pet Feeder
 
 ## 📌 Project Overview
 The **Smart IoT Pet Feeder** is an **ESP8266-based automated pet feeder** that allows pet owners to **schedule feedings, track food levels, and control feeding remotely** via Adafruit IO and Google Assistant. This ensures your pet is fed on time, even when you're not home.
@@ -29,7 +27,7 @@ The **Smart IoT Pet Feeder** is an **ESP8266-based automated pet feeder** that a
 ---
 ## 🔌 Wiring Diagram
 
-![Wiring Diagram](https://your-wiring-image-link.com)
+![Wiring Diagram](https://github.com/nicolaiedith1891/PetFeederIOTproject/blob/main/Images/Circuit%20pinout.png)
 
 ### **ESP8266 Pin Connections**
 
@@ -45,9 +43,10 @@ The **Smart IoT Pet Feeder** is an **ESP8266-based automated pet feeder** that a
 ### **1️⃣ Install Required Libraries**
 Ensure you have the following Arduino libraries installed:
 
-- [ESP8266WiFi](https://github.com/esp8266/Arduino)
+- [ESP8266WiFi](https://github.com/esp8266/Arduino/blob/master/libraries/ESP8266WiFi/src/ESP8266WiFi.h/)
 - [Adafruit MQTT](https://github.com/adafruit/Adafruit_MQTT_Library)
 - [Servo](https://www.arduino.cc/en/reference/servo)
+- [Wire](https://github.com/esp8266/Arduino/blob/master/libraries/Wire/Wire.h)
 - [NTPClient](https://github.com/arduino-libraries/NTPClient)
 
 ### **2️⃣ Adafruit IO Setup**
@@ -67,11 +66,11 @@ Ensure you have the following Arduino libraries installed:
 - Enter the feilds with your credentials and fill the textspaces as below.
 - Save the Scene.
   
-![If This](https://your-dashboard-image-link.com)
-![Then That](https://your-dashboard-image-link.com)
+![If This](https://github.com/nicolaiedith1891/PetFeederIOTproject/blob/main/Images/If%20This.png)
+![Then That](https://github.com/nicolaiedith1891/PetFeederIOTproject/blob/main/Images/Then%20That.png)
 
 ### **4️⃣ Setup Google Assistant**
-- Download **[Google Home](https://github.com/esp8266/Arduino)** app from google Play.
+- Download **[Google Home](https://play.google.com/store/apps/details?id=com.google.android.apps.chromecast.app&hl=en)** app from google Play.
 - Sign in with the same Google Account used for IFTT.
 - Go to Services -> Works With Google.
 - Add and Approve the IFTT account.
@@ -79,7 +78,7 @@ Ensure you have the following Arduino libraries installed:
 
 ### **5️⃣ Upload the Code**
 - Open **Arduino IDE**.
-- Copy and paste the [IoT Pet Feeder Code](your-code-link.com).
+- Copy and paste the [IoT Pet Feeder Code](https://github.com/nicolaiedith1891/PetFeederIOTproject/blob/main/petFeeder/petFeeder.ino).
 - Upload it to your ESP8266 board.
 
 ---
@@ -99,14 +98,14 @@ Ensure you have the following Arduino libraries installed:
 ---
 ## 📱 Dashboard & Google Assistant
 ### **Adafruit IO Dashboard**
-![Dashboard](https://your-dashboard-image-link.com)
+![Dashboard](https://github.com/nicolaiedith1891/PetFeederIOTproject/blob/main/Images/Dashboard.png)
 - Toggle scheduled feeding mode.
 - View live feed count, timestamp, and food level.
 
 ### **Google Assistant Voice Commands**
 ```
 "Hey Google, feed my pet."
-"Hey Google, check food level."
+"Hey Google, feed max." (With custom Routine)
 ```
 
 ---
