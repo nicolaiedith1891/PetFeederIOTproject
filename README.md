@@ -1,4 +1,4 @@
-# 🐾 Smart IoT Pet Feeder
+![image](https://github.com/user-attachments/assets/b00c8b82-7283-4873-bcb5-51fcd835568a)# 🐾 Smart IoT Pet Feeder
 
 ![IoT Pet Feeder](https://your-image-link.com)
 
@@ -59,7 +59,25 @@ Ensure you have the following Arduino libraries installed:
    - `scheduled_feed` (Boolean) - Toggles scheduled feeding mode.
 3. Copy your **Adafruit IO Key & Username** into your code.
 
-### **3️⃣ Upload the Code**
+### **3️⃣IFTT Servlet Setup**
+- Create a new account on [IFTT Website](https://ifttt.com/explore) with your **Google** Account.
+- Go to **Create** -> **If This**, and Chose **Google Assistant** and Select **Activate Scene**.
+- Give the Scene name as **pet feeder**.
+- Select the **Then That** and Chose **Adafruit** as the output.
+- Enter the feilds with your credentials and fill the textspaces as below.
+- Save the Scene.
+  
+![If This](https://your-dashboard-image-link.com)
+![Then That](https://your-dashboard-image-link.com)
+
+### **4️⃣ Setup Google Assistant**
+- Download **[Google Home](https://github.com/esp8266/Arduino)** app from google Play.
+- Sign in with the same Google Account used for IFTT.
+- Go to Services -> Works With Google.
+- Add and Approve the IFTT account.
+- (Optional) Create a New **Routine** to customize the voice command.
+
+### **5️⃣ Upload the Code**
 - Open **Arduino IDE**.
 - Copy and paste the [IoT Pet Feeder Code](your-code-link.com).
 - Upload it to your ESP8266 board.
